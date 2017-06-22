@@ -1,5 +1,6 @@
 # Load packages
 
+library(curatedOvarianData)
 library(RcppArmadillo)
 library(e1071)
 library(ranger)
@@ -8,6 +9,8 @@ library(rpart)
 library(genefilter)
 library(nnet)
 library(nnls)
+library(foreach)
+library(parallel)
 
 # These are the learner/predictor pairs, written to be supplied generically
 # to the simulation functions
@@ -31,23 +34,30 @@ mompred <- function(mod, newdata){
 }
 
 treefit <- function(data, ...){
-	#tout <- colttests(as.matrix(data[,-1]), data[,1], tstatOnly = TRUE)
-	#data <- data[, c("y",rownames(tout)[order(abs(tout[,1]), decreasing = T)[1:20]])]
 	mod <- rpart::rpart(y ~ ., data = as.data.frame(data), ...)
 	mod <- rpart::prune(mod, mod$cptable[which(abs(diff(mod$cptable[,"xerror"])) < 0.01)[1], "CP"])
 	mod
 }
 
-treefit_ensemble <- function(data, n_idx, p_idx, ...){
-	form <- paste0("y ~ ", paste0("V", p_idx, collapse = " + "))
-	mod <- rpart::rpart(form, data = as.data.frame(data), subset = n_idx)
-	#mod <- rpart::prune(mod, mod$cptable[which(abs(diff(mod$cptable[,"xerror"])) < 0.01)[1], "CP"])
+treepred <- function(mod, newdata){
+	as.vector(predict(mod, newdata=newdata))
+}
+
+treefit_fs <- function(data, ...){
+	tout <- colttests(as.matrix(data[,-1]), data[,1], tstatOnly = TRUE)
+	data <- data[, c("y",rownames(tout)[order(abs(tout[,1]), decreasing = T)[1:20]])]
+	mod <- rpart::rpart(y ~ ., data = as.data.frame(data), ...)
 	mod
 }
 
-treepred <- function(mod, newdata){
-	as.vector(predict(mod, newdata=newdata))
-	#as.vector(predict(mod, newdata=newdata)[,2])
+treepred_fs <- function(mod, newdata){
+	as.vector(predict(mod, newdata=newdata)[,2])
+}
+
+treefit_ensemble <- function(data, n_idx, p_idx, ...){
+	form <- paste0("y ~ ", paste0("V", p_idx, collapse = " + "))
+	mod <- rpart::rpart(form, data = as.data.frame(data), subset = n_idx)
+	mod
 }
 
 lassofit <- function(data, ...){
@@ -59,20 +69,24 @@ lassopred <- function(mod, newdata){
 }
 
 rffit <- function(data, ...){
-	#tout <- colttests(as.matrix(data[,-1]), data[,1], tstatOnly = TRUE)
-	#data <- data[, c("y",rownames(tout)[order(abs(tout[,1]), decreasing = T)[1:20]])]
-	#ranger(y ~ ., data = data, write.forest = TRUE, probability = T) # added probability for tumorgrade stuff
 	ranger::ranger(y ~ ., data = data, write.forest = TRUE)
 }
 
 rfpred <- function(mod, newdata){
-	#predict(mod, data = newdata)$predictions[,2] # second column for probability stuff
 	predict(mod, data = newdata)$predictions
 }
 
+rffit_fs <- function(data, ...){
+	tout <- colttests(as.matrix(data[,-1]), data[,1], tstatOnly = TRUE)
+	data <- data[, c("y",rownames(tout)[order(abs(tout[,1]), decreasing = T)[1:20]])]
+	ranger(y ~ ., data = data, write.forest = TRUE, probability = T)
+}
+
+rfpred_fs <- function(mod, newdata){
+	predict(mod, data = newdata)$predictions[,2]
+}
+
 nnetfit <- function(data, ...){
-#	tout <- colttests(as.matrix(data[,-1]), data[,1], tstatOnly = TRUE)
-#	data <- data[, c("y",rownames(tout)[order(abs(tout[,1]), decreasing = T)[1:50]])]
 	nnet::nnet(y ~ ., data = data, size = 10, linout = T, trace = F)
 }
 
@@ -80,7 +94,7 @@ nnetpred <- function(mod, newdata){
 	as.vector(predict(mod, newdata = newdata))
 }
 
-# Function to normalize by subtracting off the worst performer
+# Normalize by subtracting off the worst performer
 # Takes as input a vector of weights and a flag indicating whether
 # high values are bad (max.norm = TRUE) or low values are bad (max.norm = FALSE)
 
@@ -97,9 +111,9 @@ absnorm <- function(vec, max.norm = FALSE){
 	sgn*(vec/sum(vec))
 }
 
-
-
-# credit to Greg Snow
+# Ues to shadow letters for Figure 3 plot bottom panel
+# credit to Greg Snow c/o 
+# https://stackoverflow.com/questions/25631216/r-is-there-any-way-to-put-border-shadow-or-buffer-around-text-labels-en-r-plot
 shadowtext <- function(x, y=NULL, labels, col='white', bg='black', 
                        theta= seq(0, 2*pi, length.out=50), r=0.1, ... ) {
 
@@ -115,4 +129,16 @@ shadowtext <- function(x, y=NULL, labels, col='white', bg='black',
     text(xy$x, xy$y, labels, col=col, ... )
 }
 
+# Function to compute log-loss c/o
+# https://www.r-bloggers.com/making-sense-of-logarithmic-loss/
+#
+# Used for debulking analysis where the outcome is binary and
+# predictions are probabilities
 
+LogLossBinary = function(actual, predicted, eps = 1e-15) {
+   if(is.factor(actual)){
+	actual <- as.numeric(actual) - 1
+   }
+   predicted = pmin(pmax(predicted, eps), 1-eps)
+   - (sum(actual * log(predicted) + (1 - actual) * log(1 - predicted))) / length(actual)
+}

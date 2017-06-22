@@ -3,8 +3,8 @@ source(system.file("extdata", "patientselection.config",package="curatedOvarianD
 sapply(ls(), function(x) if(!x %in% c("remove.samples", "duplicates")) print(get(x)))
 source(system.file("extdata", "createEsetList.R", package = "curatedOvarianData"))
 
-# Save the original eset list
-#save(esets, file = "061417_esets.Rda")
+# Save the original eset list - reuse this list for other analyses
+# e.g. save(esets, file = "061417_esets.Rda")
 
 # Remove esets with missing gene expression data
 ridx <- which(unlist(lapply(esets, function(x){sum(is.na(exprs(x)))})) > 0)
@@ -34,78 +34,78 @@ for(i in 1:length(edat_orig)){
 	edat_orig[[i]] <- apply(edat_orig[[i]], 2, scale)
 }
 
-cl<-makeCluster(detectCores() - 1)
-registerDoParallel(cl)
-
-lasso_all_nonl_bad <- tree_all_nonl_bad <- nnet_all_nonl_bad <- rf_all_nonl_bad <- mom_all_nonl_bad <- pan6_all_nonl_bad <-  vector("list", 4)
-perturb <- c(0.25, 1, 5, 10)
-nrun <- 100
-
-system.time(for(i in 1:length(perturb)){
-
-	set.seed(32084, kind = "L'Ecuyer-CMRG")
-	pan6_all_nonl_bad[[i]] <- foreach(idx = 1:nrun, 
-      	  .combine = rbind)  %dopar% {
-			#multistudysim(rffit, rfpred, 0.25, perturb[i], perturb[i], edat_orig, simtype = "nonl")
-			pan6sim(0.25, perturb[i], perturb[i], edat_orig, simtype = "nonl")
-      	 }
-})
-
-tmp <- do.call(rbind, lapply(pan6_all, function(x){apply(sqrt(x), 2, mean)}))
-rownames(tmp) <- c(0.25, 1, 2, 10)
-xtable(tmp)
-
-stopImplicitCluster()
 
 labels <- c("LASSO", "CART", "Neural Net", "Mas-o-Menos", "Random Forest", "L-C-N-M")
-names <- c("lasso_all", "tree_all", "nnet_all", "mom_all", "rf_all", "pan6_all")
-names <- paste0(names, "_bad")
+names <- c("lasso", "tree", "nnet", "mom", "rf", "pan6")
 
-par(mfrow = c(6,1))
-par(cex = 0.6)
-par(mar = c(0, 0, 0, 0), oma = c(6, 8, 0.5, 12))
-par(tcl = -0.25)
-par(mgp = c(2, 0.6, 0))
+# Note: the modfit/modpred arguments for pan6 don't matter as they are unused
 
-mins <- whichmins <- vector("list", 6)
-for(i in 1:6){
-	tmp <- do.call(rbind, lapply(eval(parse(text=names[i])), function(x){apply(sqrt(x), 2, median)}))
-	matplot(tmp[,-c(5,6,8,9,10)]/tmp[,10], type = "l", lwd = 3.5, ylim = c(0.25, 2), yaxt = "n", xaxt = "n", xlab ="", ylab = "")
-	mins[[i]] <- apply(tmp[,-c(5,6,8,9)], 1, min)
-	whichmins[[i]] <- apply(tmp[,-c(5,6,8,9)], 1, which.min)
-	abline(h = 1, lty = "dashed")
+# This produces figure 3 in the main text
 
-	if(i == 3){
-		legend(4.05, 2, c("Merged","Avg", "n-Avg", "CS-Avg", "Stack OLS", "Study OLS"),col=seq_len(ncol(tmp)),cex=2,fill=seq_len(ncol(tmp)), bty = "n", xpd = NA)
-	}
+lasso_normal_low <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE)
+tree_normal_low <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE)
+nnet_normal_low <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE)
+mom_normal_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE)
+rf_normal_low <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE)
+pan6_normal_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = TRUE)
 
-	axis(2, at = c(0.5,1,1.5), cex.axis = 1.5)
-	
-	if(i == 6){
-		axis(1, at = 1:4, labels = perturb, cex.axis = 1.5)
-	}
+simplots(list(lasso_normal_low, tree_normal_low, nnet_normal_low, mom_normal_low, rf_normal_low, pan6_normal_low))
 
-	if(i == 3){
-		mtext("Average RMSE Ratio", side = 2, line = 3.7, adj = 0.79, cex= 1.5)
-	}
+# These tables appear as tables 1-6 in the supplement
 
-}
+xtable(do.call(rbind, lapply(lasso_normal_low, function(x){apply(sqrt(x), 2, mean)})))
+xtable(do.call(rbind, lapply(tree_normal_low, function(x){apply(sqrt(x), 2, mean)})))
+xtable(do.call(rbind, lapply(nnet_normal_low, function(x){apply(sqrt(x), 2, mean)})))
+xtable(do.call(rbind, lapply(mom_normal_low, function(x){apply(sqrt(x), 2, mean)})))
+xtable(do.call(rbind, lapply(rf_normal_low, function(x){apply(sqrt(x), 2, mean)})))
+xtable(do.call(rbind, lapply(pan6_normal_low, function(x){apply(sqrt(x), 2, mean)})))
 
-mbox <- do.call(cbind, mins)
-wmbox <- do.call(cbind, whichmins)
+# The following appear in the supplement as figures 1-5
 
-matplot(mbox, type = "l", col = "black", ylim = c(min(mbox) - 0.2,max(mbox) + 0.2), cex =2, xaxt = "n", xlab = "Coefficient Perturbation Window", ylab = "", cex.axis = 1, cex.lab = 1.5, xlim = c(0.95, 4.05))
-axis(1, at = 1:4, labels = perturb, cex.axis = 1)
-#axis(2, at = floor(min(mbox)):ceiling(max(mbox)), labels = F, tck = -0.015)
-#mtext(floor(min(mbox)):ceiling(max(mbox)), 2, line = 0.5, at = floor(min(mbox)):ceiling(max(mbox)))
-mtext("Average Validation RMSE", 2, line = 2, cex = 1.5)
+lasso_normal_high <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = FALSE)
+tree_normal_high <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = FALSE)
+nnet_normal_high <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = FALSE)
+mom_normal_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = FALSE)
+rf_normal_high <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = FALSE)
+pan6_normal_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "normal", pan6 = TRUE)
 
-for(i in 1:ncol(mbox)){
-	for(j in 1:4){
-		shadowtext(j, mbox[j,i], labels = LETTERS[i], col = wmbox[j,i], r=0.12, cex = 2)
-	}
-}
+simplots(list(lasso_normal_high, tree_normal_high, nnet_normal_high, mom_normal_high, rf_normal_high, pan6_normal_high))
 
+lasso_slash_low <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = FALSE)
+tree_slash_low <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = FALSE)
+nnet_slash_low <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = FALSE)
+mom_slash_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = FALSE)
+rf_slash_low <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = FALSE)
+pan6_slash_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "slash", pan6 = TRUE)
+
+simplots(list(lasso_slash_low, tree_slash_low, nnet_slash_low, mom_slash_low, rf_slash_low, pan6_slash_low))
+
+lasso_slash_high <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = FALSE)
+tree_slash_high <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = FALSE)
+nnet_slash_high <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = FALSE)
+mom_slash_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = FALSE)
+rf_slash_high <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = FALSE)
+pan6_slash_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "slash", pan6 = TRUE)
+
+simplots(list(lasso_slash_high, tree_slash_high, nnet_slash_high, mom_slash_high, rf_slash_high, pan6_slash_high))
+
+lasso_nonl_low <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = FALSE)
+tree_nonl_low <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = FALSE)
+nnet_nonl_low <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = FALSE)
+mom_nonl_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = FALSE)
+rf_nonl_low <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = FALSE)
+pan6_nonl_low <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "low", simtype = "nonl", pan6 = TRUE)
+
+simplots(list(lasso_nonl_low, tree_nonl_low, nnet_nonl_low, mom_nonl_low, rf_nonl_low, pan6_nonl_low))
+
+lasso_nonl_high <- runsimpar(lassofit, lassopred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = FALSE)
+tree_nonl_high <- runsimpar(treefit, treepred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = FALSE)
+nnet_nonl_high <- runsimpar(nnetfit, nnetpred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = FALSE)
+mom_nonl_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = FALSE)
+rf_nonl_high <- runsimpar(rffit, rfpred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = FALSE)
+pan6_nonl_high <- runsimpar(momfit, mompred, edat_orig, nrun = 100, val = "high", simtype = "nonl", pan6 = TRUE)
+
+simplots(list(lasso_nonl_high, tree_nonl_high, nnet_nonl_high, mom_nonl_high, rf_nonl_high, pan6_nonl_high))
 
 ##################
 # Multi-ensemble #
