@@ -18,10 +18,14 @@ RcppArmadillo, e1071, ranger, glmnet, rpart, nnet, nnls, foreach, parallel
 
 curatedOvarianData, genefilter
 
+### Instructions
+
+First, source multistudysim_utils.R and multistudysim.R. Begin with csml_runner.R, which contains at the top code to generate a list of datasets from curatedOvarianData.
+Then you may proceed with the remainder of that file which runs the simulations for Figure 3 in the paper and figures and tables in the supplement. 
+curovsim.R and debulksim.R produce Figure 2 and Table 1 of the main text, respectively, and rely on the list of datasets created in csml_runner.R.
+
 ### Comments
 
-Main simulations are run parallelized to save some time. If you'd rather run them in serial, let me know and I can send you modified code.
+Main simulations are run in parallel to save some time. If you'd rather run them serially, let me know and I can send you modified code.
 
-Start with csml_runner.R to generate the list of datasets, and save that into a .Rda object.
-
-Let me know if you have any issues! I intend to produce a .Rmd with all results in it, but generating this will take some time.
+Please let me know if you have any issues. I intend to produce a .Rmd with all results in it, but generating this will take some time.
