@@ -1,7 +1,7 @@
 # csml_rep
 ## Code to replicate analyses from "Training Replicable Predictors in Multiple Studies"
 
-### File s
+### Files
 
 - csml_runner.R: Main function to (1) generate dataset list from curatedOvarianData (2) run main simulation to produce Figure 2 of main text + supplemental results
 - curovsim.R: Code to produce Figure 1 of the supplement
