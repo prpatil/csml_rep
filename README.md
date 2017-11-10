@@ -20,7 +20,7 @@ RcppArmadillo, e1071, ranger, glmnet, rpart, nnet, nnls, foreach, parallel, doPa
 
 curatedOvarianData, genefilter
 
-### Other packages used
+### Other libraries used
 
 survHD
 
