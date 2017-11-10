@@ -197,16 +197,15 @@ multistudysim <- function(modfit, modpred, good, bad, val, edat_orig, simtype = 
 # Output:
 # colMeans(outmat) - Average MSE across validation datasets for each weighting scheme
 
-pan6sim <- function(good, bad, val, edat_orig, simtype = "normal"){
+pan6sim <- function(good, bad, val, nvar, edat_orig, simtype = "normal"){
 	
 	ndat <- length(edat_orig)
 	ntrain <- 10
-	nvar <- 20
+	nvar <- nvar
 	modfit <- list(lassofit, treefit, nnetfit, momfit)
 	modpred <- list(lassopred, treepred, nnetpred, mompred)
 
-
-	edat <- init_data(edat_orig, nvar, simtype, good, bad, val)
+	edat <- init_data(edat_orig, ndat, nvar, simtype, good, bad, val)
 		
 	matstack <- do.call(rbind, edat[1:ntrain])
 
@@ -434,7 +433,7 @@ multiensemble <- function(modfit, modpred, modfit_ens, modpred_ens, good, bad, v
 #		length = number of perturbation levels tested
 
 
-runsimpar <- function(modfit, modpred, edat_orig, nrun = 100, val = "low", simtype = "normal", pan6 = FALSE){
+runsimpar <- function(modfit, modpred, edat_orig, nrun = 100, nvar = 20, val = "low", simtype = "normal", pan6 = FALSE){
 
 	cl<-makeCluster(detectCores() - 1)
 	registerDoParallel(cl)
@@ -457,16 +456,17 @@ runsimpar <- function(modfit, modpred, edat_orig, nrun = 100, val = "low", simty
       		  .combine = rbind, 
 			  .export = c("absnorm", "init_data", "multistudysim", "pan6sim", 
 					  "lassofit", "treefit", "nnetfit", "momfit",
-					  "lassopred", "treepred", "nnetpred", "mompred"))  %dopar% {
+					  "lassopred", "treepred", "nnetpred", "mompred", "bbs", "nnls"))  %dopar% {
 				if(pan6){
-					pan6sim(0.25, perturb[i], vcur, edat_orig, simtype = simtype)
+					pan6sim(0.25, perturb[i], vcur, nvar, edat_orig, simtype = simtype)
 				} else {
-					multistudysim(modfit, modpred, 0.25, perturb[i], vcur, edat_orig, simtype = simtype)
+					tryCatch(multistudysim(modfit, modpred, 0.25, perturb[i], vcur, nvar, edat_orig, simtype = simtype),
+						   error = function(e){multistudysim(modfit, modpred, 0.25, perturb[i], vcur, nvar, edat_orig, simtype = simtype)})
 				}
       	 	}
 	})
 
-	stopImplicitCluster()
+	stopCluster(cl)
 	outlist
 }
 
@@ -482,11 +482,11 @@ simplots <- function(outlist){
 
 	par(mfrow = c(length(outlist),1))
 	par(cex = 0.6)
-	par(mar = c(0, 0, 0, 0), oma = c(6, 8, 0.5, 12))
+	par(mar = c(0, 0, 0, 0), oma = c(2, 8, 0.5, 0.5))
 	par(tcl = -0.25)
 	par(mgp = c(2, 0.6, 0))
 
-	mins <- whichmins <- vector("list", 6)
+	mins <- whichmins <- vector("list", length(outlist))
 	perturb <- c(0.25, 1, 5, 10)
 
 	for(i in 1:length(outlist)){
@@ -496,17 +496,17 @@ simplots <- function(outlist){
 		whichmins[[i]] <- apply(tmp[,-c(5,6,8,9)], 1, which.min)
 		abline(h = 1, lty = "dashed")
 
-		if(i == 3){
-			legend(4.05, 2, c("Merged","Avg", "n-Avg", "CS-Avg", "Stack OLS", "Study OLS"),col=seq_len(ncol(tmp)),cex=2,fill=seq_len(ncol(tmp)), bty = "n", xpd = NA)
-		}
+		#if(i == 4){
+		#	legend(4.05, 2, c("Merged","Avg", "n-Avg", "CS-Avg", "Stack OLS", "Study OLS"),col=seq_len(ncol(tmp)),cex=2,fill=seq_len(ncol(tmp)), bty = "n", xpd = NA)
+		#}
 
 		axis(2, at = c(0.5,1,1.5), cex.axis = 1.5)
 	
-		if(i == 6){
+		if(i == 7){
 			axis(1, at = 1:4, labels = perturb, cex.axis = 1.5)
 		}
 
-		if(i == 3){
+		if(i == 4){
 			mtext("Average RMSE Ratio", side = 2, line = 3.7, adj = 0.79, cex= 1.5)
 		}
 
@@ -514,6 +514,9 @@ simplots <- function(outlist){
 
 	mbox <- do.call(cbind, mins)
 	wmbox <- do.call(cbind, whichmins)
+
+	windows()
+	par(mar = c(4, 0, 0, 0), oma = c(4, 4, 0.5, 0.5))
 
 	matplot(mbox, type = "l", col = "black", ylim = c(min(mbox) - 0.2,max(mbox) + 0.2), cex =2, xaxt = "n", xlab = "Coefficient Perturbation Window", ylab = "", cex.axis = 1, cex.lab = 1.5, xlim = c(0.95, 4.05))
 	axis(1, at = 1:4, labels = perturb, cex.axis = 1)
@@ -524,5 +527,7 @@ simplots <- function(outlist){
 			shadowtext(j, mbox[j,i], labels = LETTERS[i], col = wmbox[j,i], r=0.12, cex = 2)
 		}
 	}
+
+	legend(-1.07, -3, c("Merged","Avg", "n-Avg", "CS-Avg", "Reg-s", "Reg-a"),col=seq_len(ncol(tmp)),fill=seq_len(ncol(tmp)), xpd = NA, ncol = 3, cex = 1.1)
 
 }

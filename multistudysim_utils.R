@@ -8,9 +8,12 @@ library(glmnet)
 library(rpart)
 library(genefilter)
 library(nnet)
+library(mboost)
 library(nnls)
 library(foreach)
 library(parallel)
+library(doParallel)
+library(survHD)
 
 # These are the learner/predictor pairs, written to be supplied generically
 # to the simulation functions
@@ -87,10 +90,18 @@ rfpred_fs <- function(mod, newdata){
 }
 
 nnetfit <- function(data, ...){
-	nnet::nnet(y ~ ., data = data, size = 10, linout = T, trace = F)
+	nnet::nnet(y ~ ., data = data, size = 10, MaxNWts = 2000, linout = T, trace = F)
 }
 
 nnetpred <- function(mod, newdata){
+	as.vector(predict(mod, newdata = newdata))
+}
+
+boostfit <- function(data, ...){
+	mboost::mboost(y ~ ., data = data, baselearner = "bbs")
+}
+
+boostpred <- function(mod, newdata){
 	as.vector(predict(mod, newdata = newdata))
 }
 
