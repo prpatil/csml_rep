@@ -1,5 +1,5 @@
 # csml_rep
-## Code to replicate analyses from "Training Replicable Predictors in Multiple Studies"
+## Code to reproduce analyses from "Training Replicable Predictors in Multiple Studies"
 
 ### Files
 
